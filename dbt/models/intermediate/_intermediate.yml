@@ -1,0 +1,10 @@
+version: 2
+
+models:
+  - name: int_requests_enriched
+    description: Staged requests plus day, open/closed flags, resolution hours and open age.
+    columns:
+      - name: unique_key
+        data_tests: [unique, not_null]
+      - name: created_day
+        data_tests: [not_null]

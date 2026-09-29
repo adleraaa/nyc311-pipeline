@@ -1,0 +1,33 @@
+version: 2
+
+models:
+  - name: fct_daily_volume
+    description: Requests created per day, borough and complaint type.
+    columns:
+      - name: created_day
+        data_tests: [not_null]
+      - name: borough
+        data_tests: [not_null]
+      - name: n_requests
+        data_tests: [not_null]
+
+  - name: agg_resolution_time
+    description: Median and p90 resolution hours by agency x complaint type, with an agency rollup ('(all)').
+    columns:
+      - name: agency
+        data_tests: [not_null]
+      - name: n_closed
+        data_tests: [not_null]
+      - name: median_hours
+        data_tests: [not_null]
+
+  - name: agg_open_backlog_aging
+    description: Open requests by agency, complaint type and age bucket.
+    columns:
+      - name: age_bucket
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["<1d", "1-3d", "3-7d", "7-14d", "14-30d", "30d+"]
+      - name: n_open
+        data_tests: [not_null]

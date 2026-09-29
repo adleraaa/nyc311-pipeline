@@ -1,0 +1,20 @@
+name: nyc311
+version: "0.1.0"
+config-version: 2
+profile: nyc311
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+models:
+  nyc311:
+    staging:
+      +schema: staging
+      +materialized: view
+    intermediate:
+      +schema: intermediate
+      +materialized: view
+    marts:
+      +schema: marts
+      +materialized: table

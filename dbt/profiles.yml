@@ -1,0 +1,8 @@
+nyc311:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # Relative to the directory dbt is launched from (the repo root).
+      path: "{{ env_var('NYC311_DB_PATH', 'data/warehouse.duckdb') }}"
+      threads: 4
