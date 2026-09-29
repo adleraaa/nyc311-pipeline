@@ -2,7 +2,8 @@ name: Refresh data and deploy dashboard
 
 on:
   schedule:
-    # The source publishes its daily update around 01:30 UTC.
+    # The daily update is stamped about 01:30 UTC but was first served around
+    # 04:05 UTC on 2026-09-29 (replica rollout), so 07:30 leaves a margin.
     - cron: "30 7 * * *"
   workflow_dispatch:
 

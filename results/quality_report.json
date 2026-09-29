@@ -1,67 +1,81 @@
 {
-  "run_id": "20260929T003228Z-api",
+  "run_id": "20260929T040819Z-api-036de8",
   "source": "api",
-  "source_as_of_utc": "2026-09-29T00:32:28.900201",
+  "mode": "incremental",
+  "status": "success",
+  "source_as_of_utc": "2026-09-29T04:08:19.987474",
   "overall": "pass",
   "checks": [
     {
       "name": "freshness",
       "status": "pass",
-      "detail": "latest source update 22.9 h before the run (warn > 36 h, fail > 72 h)",
+      "detail": "latest source update 2.4 h before the run (warn > 36 h, fail > 72 h)",
       "metrics": {
-        "as_of_utc": "2026-09-29T00:32:28.900201",
-        "max_source_updated_at_utc": "2026-09-28T01:38:24.258000",
-        "lag_hours": 22.9
+        "as_of_utc": "2026-09-29T04:08:19.987474",
+        "max_source_updated_at_utc": "2026-09-29T01:45:13.435000",
+        "lag_hours": 2.39
       }
     },
     {
       "name": "volume_anomaly",
       "status": "pass",
-      "detail": "2026-09-26: 8831 requests = 0.82x the trailing 28-day mean; 0 of 21 evaluated days outside +/-50%",
+      "detail": "2026-09-26: 8840 requests = 0.84x the mean of the same weekday in the 3 preceding weeks; 0 of 14 evaluated days outside +/-25% (complete = ended >= 40.2 h, the p90 publication lag, before the latest source update)",
       "metrics": {
         "latest": {
           "day": "2026-09-26",
-          "count": 8831,
-          "trailing_mean": 10776.8,
-          "ratio": 0.819,
-          "z": -2.58,
+          "count": 8840,
+          "baseline_mean": 10576.3,
+          "baseline_weeks": 3,
+          "ratio": 0.836,
           "flagged": false
         },
-        "days_evaluated": 21,
-        "flagged_days": []
+        "complete_days": 28,
+        "last_complete_day": "2026-09-26",
+        "days_evaluated": 14,
+        "flagged_days": [],
+        "completeness_lag_hours": 40.18
       }
     },
     {
       "name": "duplicate_rate",
       "status": "pass",
-      "detail": "0 duplicate keys in the warehouse; 0.00% of rows fetched in the latest run were repeats",
+      "detail": "0.00% of 107494 rows fetched in the latest run were repeats (warn > 1%)",
       "metrics": {
-        "warehouse_duplicate_keys": 0,
-        "run_rows_fetched": 0,
+        "run_rows_fetched": 107494,
         "run_duplicate_rows": 0,
         "run_duplicate_rate": 0.0
       }
     },
     {
+      "name": "source_count",
+      "status": "pass",
+      "detail": "warehouse 309478 rows vs source 309478 (difference +0, warn above 0.1%)",
+      "metrics": {
+        "warehouse_rows": 309478,
+        "source_rows": 309478,
+        "difference": 0
+      }
+    },
+    {
       "name": "late_arriving",
       "status": "info",
-      "detail": "publication lag p50 35.2 h, p90 44.2 h; 1.0% published > 72 h after creation; latest run touched 0 requests created > 7 days earlier",
+      "detail": "publication lag p50 31.2 h, p90 40.2 h; 0.8% published > 72 h after creation; latest run updated 98344 existing requests, 44994 of them created > 7 days earlier",
       "metrics": {
-        "publication_lag_p50_hours": 35.24,
-        "publication_lag_p90_hours": 44.23,
-        "share_published_late": 0.01,
-        "rows": 300328,
-        "latest_run_updates_of_existing_rows": 0,
-        "latest_run_rows_created_over_7d_before": 0
+        "publication_lag_p50_hours": 31.24,
+        "publication_lag_p90_hours": 40.18,
+        "share_published_late": 0.0083,
+        "rows": 309478,
+        "latest_run_updates_of_existing_rows": 98344,
+        "latest_run_updates_created_over_7d_before": 44994
       }
     },
     {
       "name": "closed_before_created",
       "status": "info",
-      "detail": "206 of 300328 requests have closed_date < created_date (resolution time set to null)",
+      "detail": "212 of 309478 requests have closed_date < created_date (resolution time set to null)",
       "metrics": {
-        "invalid": 206,
-        "rows": 300328
+        "invalid": 212,
+        "rows": 309478
       }
     }
   ]

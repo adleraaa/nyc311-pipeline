@@ -15,7 +15,8 @@
       "rows_duplicate_in_run": 0,
       "rows_inserted": 300328,
       "rows_updated": 0,
-      "rows_pruned": 0
+      "rows_pruned": 0,
+      "status": "success"
     },
     {
       "run_id": "20260929T003228Z-api",
@@ -32,79 +33,184 @@
       "rows_duplicate_in_run": 0,
       "rows_inserted": 0,
       "rows_updated": 0,
-      "rows_pruned": 0
+      "rows_pruned": 0,
+      "status": "success"
+    },
+    {
+      "run_id": "20260929T040558Z-api-4da71c",
+      "source": "api",
+      "mode": "incremental",
+      "started_at": "2026-09-29 04:05:58.002209",
+      "finished_at": "2026-09-29 04:05:58.780875",
+      "source_as_of": "2026-09-29 04:05:58.002209",
+      "window_start": "2026-08-30T00:00:00",
+      "watermark_before": "2026-09-28T01:38:24.258Z|70556410",
+      "watermark_after": "2026-09-28T01:38:24.258Z|70556410",
+      "pages": 0,
+      "rows_fetched": 0,
+      "rows_duplicate_in_run": 0,
+      "rows_inserted": 0,
+      "rows_updated": 0,
+      "rows_pruned": 0,
+      "status": "success"
+    },
+    {
+      "run_id": "20260929T040819Z-api-036de8",
+      "source": "api",
+      "mode": "incremental",
+      "started_at": "2026-09-29 04:08:19.987474",
+      "finished_at": "2026-09-29 04:09:26.311745",
+      "source_as_of": "2026-09-29 04:08:19.987474",
+      "window_start": "2026-08-30T00:00:00",
+      "watermark_before": "2026-09-28T01:38:24.258Z|70556410",
+      "watermark_after": "2026-09-29T01:45:13.435Z|70565782",
+      "pages": 6,
+      "rows_fetched": 107494,
+      "rows_duplicate_in_run": 0,
+      "rows_inserted": 9150,
+      "rows_updated": 98344,
+      "rows_pruned": 0,
+      "status": "success"
     }
   ],
   "meta": {
-    "data_as_of": "2026-09-27 02:18:16",
+    "data_as_of": "2026-09-28 02:05:27",
     "window_start": "2026-08-30",
-    "source_updated_at_utc": "2026-09-28 01:38:24.258",
-    "n_requests": 300328,
-    "n_open": 58511
+    "source_updated_at_utc": "2026-09-29 01:45:13.435",
+    "n_requests": 309478,
+    "n_open": 60807
   },
-  "closed_with_resolution_time": 241592,
-  "citywide_median_resolution_hours": 3.45,
-  "citywide_p90_resolution_hours": 132.49,
-  "top_complaint_types": [
-    {
-      "complaint_type": "Illegal Parking",
-      "n": 49574
-    },
-    {
-      "complaint_type": "Noise - Residential",
-      "n": 30014
-    },
-    {
-      "complaint_type": "Noise - Street/Sidewalk",
-      "n": 19382
-    },
-    {
-      "complaint_type": "Blocked Driveway",
-      "n": 15287
-    },
-    {
-      "complaint_type": "UNSANITARY CONDITION",
-      "n": 12910
-    }
-  ],
-  "fastest_agencies": [
+  "resolution_cohort": {
+    "n_requests": 160002,
+    "n_closed": 140460,
+    "share_open": 0.1221
+  },
+  "resolution_by_agency": [
     {
       "agency": "NYPD",
-      "n_closed": 143284,
-      "median_hours": 1.38,
-      "p90_hours": 7.06
+      "n_requests": 79996,
+      "n_closed": 79996,
+      "share_open": 0.0,
+      "median_hours": 1.29,
+      "p90_hours": 6.79
     },
     {
       "agency": "DHS",
-      "n_closed": 4487,
-      "median_hours": 5.01,
-      "p90_hours": 16.91
+      "n_requests": 2269,
+      "n_closed": 2157,
+      "share_open": 0.0494,
+      "median_hours": 5.42,
+      "p90_hours": 32.97
     },
     {
       "agency": "DEP",
-      "n_closed": 11879,
-      "median_hours": 20.7,
-      "p90_hours": 155.47
-    }
-  ],
-  "slowest_agencies": [
+      "n_requests": 8472,
+      "n_closed": 7328,
+      "share_open": 0.135,
+      "median_hours": 42.19,
+      "p90_hours": null
+    },
     {
-      "agency": "DOHMH",
-      "n_closed": 3202,
-      "median_hours": 80.32,
-      "p90_hours": 325.66
+      "agency": "DSNY",
+      "n_requests": 14731,
+      "n_closed": 14187,
+      "share_open": 0.0369,
+      "median_hours": 47.92,
+      "p90_hours": 173.33
+    },
+    {
+      "agency": "DOT",
+      "n_requests": 10069,
+      "n_closed": 8067,
+      "share_open": 0.1988,
+      "median_hours": 123.31,
+      "p90_hours": null
+    },
+    {
+      "agency": "DOB",
+      "n_requests": 4863,
+      "n_closed": 2988,
+      "share_open": 0.3856,
+      "median_hours": 181.63,
+      "p90_hours": null
     },
     {
       "agency": "HPD",
-      "n_closed": 29385,
-      "median_hours": 122.64,
-      "p90_hours": 353.3
+      "n_requests": 24535,
+      "n_closed": 19435,
+      "share_open": 0.2079,
+      "median_hours": 218.97,
+      "p90_hours": null
+    },
+    {
+      "agency": "DOHMH",
+      "n_requests": 3996,
+      "n_closed": 2152,
+      "share_open": 0.4615,
+      "median_hours": 408.42,
+      "p90_hours": null
+    },
+    {
+      "agency": "DCWP",
+      "n_requests": 978,
+      "n_closed": 382,
+      "share_open": 0.6094,
+      "median_hours": null,
+      "p90_hours": null
+    },
+    {
+      "agency": "DPR",
+      "n_requests": 8189,
+      "n_closed": 3433,
+      "share_open": 0.5808,
+      "median_hours": null,
+      "p90_hours": null
+    },
+    {
+      "agency": "EDC",
+      "n_requests": 167,
+      "n_closed": 0,
+      "share_open": 1.0,
+      "median_hours": null,
+      "p90_hours": null
     },
     {
       "agency": "OOS",
-      "n_closed": 56,
-      "median_hours": 135.24,
-      "p90_hours": 373.0
+      "n_requests": 210,
+      "n_closed": 44,
+      "share_open": 0.7905,
+      "median_hours": null,
+      "p90_hours": null
+    },
+    {
+      "agency": "TLC",
+      "n_requests": 1510,
+      "n_closed": 286,
+      "share_open": 0.8106,
+      "median_hours": null,
+      "p90_hours": null
+    }
+  ],
+  "top_complaint_types": [
+    {
+      "complaint_type": "Illegal Parking",
+      "n": 51042
+    },
+    {
+      "complaint_type": "Noise - Residential",
+      "n": 31182
+    },
+    {
+      "complaint_type": "Noise - Street/Sidewalk",
+      "n": 19570
+    },
+    {
+      "complaint_type": "Blocked Driveway",
+      "n": 15770
+    },
+    {
+      "complaint_type": "UNSANITARY CONDITION",
+      "n": 13217
     }
   ]
 }

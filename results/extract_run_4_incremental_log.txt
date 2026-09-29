@@ -1,0 +1,14 @@
+$ python -m nyc311 -v extract --window-days 30 --stats-out results/extract_run_4_incremental.json
+(log lines copied verbatim from the terminal; local time is UTC-4, so 00:08 local = 04:08 UTC)
+2026-09-29 00:08:19,989 INFO nyc311.extract: run 20260929T040819Z-api-036de8: incremental from 2026-09-28T01:38:24.258Z|70556410, window_start=2026-08-30T00:00:00
+2026-09-29 00:08:23,411 WARNING nyc311.socrata: stale replica (truth last modified Mon, 28 Sep 2026 01:38:24 GMT), attempt 1 of 6
+2026-09-29 00:08:36,194 INFO nyc311.extract: page 1: 20000 rows (0 new, 20000 updated)
+2026-09-29 00:08:36,737 WARNING nyc311.socrata: stale replica (truth last modified Mon, 28 Sep 2026 01:38:24 GMT), attempt 1 of 6
+2026-09-29 00:08:50,782 INFO nyc311.extract: page 2: 20000 rows (0 new, 20000 updated)
+2026-09-29 00:08:56,494 INFO nyc311.extract: page 3: 20000 rows (0 new, 20000 updated)
+2026-09-29 00:08:56,762 WARNING nyc311.socrata: stale replica (truth last modified Mon, 28 Sep 2026 01:38:24 GMT), attempt 1 of 6
+2026-09-29 00:09:10,616 INFO nyc311.extract: page 4: 20000 rows (0 new, 20000 updated)
+2026-09-29 00:09:10,797 WARNING nyc311.socrata: stale replica (truth last modified Mon, 28 Sep 2026 01:38:24 GMT), attempt 1 of 6
+2026-09-29 00:09:22,218 INFO nyc311.extract: page 5: 20000 rows (1656 new, 18344 updated)
+2026-09-29 00:09:26,292 INFO nyc311.extract: page 6: 7494 rows (7494 new, 0 updated)
+{"run_id": "20260929T040819Z-api-036de8", "mode": "incremental", "status": "success", "pages": 6, "rows_fetched": 107494, "rows_inserted": 9150, "rows_updated": 98344, "rows_pruned": 0, "rows_duplicate_in_run": 0, "seconds": 66.3}

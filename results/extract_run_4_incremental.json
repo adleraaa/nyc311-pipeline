@@ -1,0 +1,12 @@
+{
+  "run_id": "20260929T040819Z-api-036de8",
+  "mode": "incremental",
+  "status": "success",
+  "pages": 6,
+  "rows_fetched": 107494,
+  "rows_inserted": 9150,
+  "rows_updated": 98344,
+  "rows_pruned": 0,
+  "rows_duplicate_in_run": 0,
+  "seconds": 66.3
+}

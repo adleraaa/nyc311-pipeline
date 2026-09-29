@@ -1,0 +1,16 @@
+{
+  "checked_at_utc": "2026-09-29T04:13:56Z",
+  "latest_run_id": "20260929T040819Z-api-036de8",
+  "window_start": "2026-08-30T00:00:00",
+  "source_versions": [
+    "Tue, 29 Sep 2026 01:45:13 GMT"
+  ],
+  "source_keys": 309478,
+  "warehouse_rows": 309478,
+  "missing_in_warehouse": 0,
+  "missing_sample": [],
+  "extra_in_warehouse": 0,
+  "extra_sample": [],
+  "days_compared": 30,
+  "days_with_count_difference": {}
+}
