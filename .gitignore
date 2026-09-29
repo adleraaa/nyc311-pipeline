@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Local warehouse, landing zone and build output (rebuilt by the pipeline)
+data/
+_site/
+site/data/
+
+# dbt artifacts
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+logs/
+
+.env

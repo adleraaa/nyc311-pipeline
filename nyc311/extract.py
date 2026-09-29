@@ -1,0 +1,203 @@
+"""Extract-load orchestration: API (or a fixture file) -> landing Parquet -> raw table.
+
+Each page is committed in its own transaction together with the new watermark,
+so a crash mid-run loses at most the page in flight and the next run resumes
+exactly where the last committed page ended.
+"""
+
+from __future__ import annotations
+
+import gzip
+import json
+import logging
+from collections.abc import Iterable
+from datetime import UTC, datetime
+from pathlib import Path
+
+import duckdb
+import requests
+
+from nyc311 import warehouse as wh
+from nyc311.socrata import Watermark, fetch_pages
+
+log = logging.getLogger(__name__)
+
+
+def _format_wm(wm: Watermark | None) -> str | None:
+    return None if wm is None else f"{wm.updated_at}|{wm.unique_key}"
+
+
+def _load_pages(
+    con: duckdb.DuckDBPyConnection,
+    pages: Iterable[tuple[list[dict], Watermark]],
+    *,
+    run_id: str,
+    landing_dir: Path,
+    covered_from: str,
+    loaded_at: datetime,
+) -> tuple[wh.RunStats, Watermark | None]:
+    stats = wh.RunStats(run_id=run_id)
+    last_wm = None
+    for rows, wm in pages:
+        stats.pages += 1
+        table = wh.rows_to_table(rows)
+        wh.land_page(table, landing_dir, run_id, stats.pages)
+
+        keys = table.column("unique_key").to_pylist()
+        # Keys delivered more than once in this run (within a page or across
+        # pages, e.g. a row updated while we were paging). Reported by QA.
+        for key in keys:
+            if key in stats.seen_keys:
+                stats.rows_duplicate_in_run += 1
+            stats.seen_keys.add(key)
+
+        con.begin()
+        try:
+            inserted, updated = wh.upsert_page(con, wh.dedupe_latest(table), run_id, loaded_at)
+            wh.write_state(con, wm, covered_from)
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
+        stats.rows_fetched += len(rows)
+        stats.rows_inserted += inserted
+        stats.rows_updated += updated
+        last_wm = wm
+        log.info("page %d: %d rows (%d new, %d updated)", stats.pages, len(rows), inserted, updated)
+    return stats, last_wm
+
+
+def _record_run(
+    con: duckdb.DuckDBPyConnection,
+    stats: wh.RunStats,
+    *,
+    source: str,
+    mode: str,
+    started_at: datetime,
+    source_as_of: datetime,
+    window_start: str,
+    wm_before: Watermark | None,
+    wm_after: Watermark | None,
+) -> None:
+    con.execute(
+        "INSERT INTO raw.extract_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            stats.run_id,
+            source,
+            mode,
+            started_at.replace(tzinfo=None),
+            datetime.now(UTC).replace(tzinfo=None),
+            source_as_of.replace(tzinfo=None),
+            window_start,
+            _format_wm(wm_before),
+            _format_wm(wm_after),
+            stats.pages,
+            stats.rows_fetched,
+            stats.rows_duplicate_in_run,
+            stats.rows_inserted,
+            stats.rows_updated,
+            stats.rows_pruned,
+        ],
+    )
+
+
+def run_extract(
+    con: duckdb.DuckDBPyConnection,
+    session: requests.Session,
+    *,
+    data_dir: Path,
+    window_days: int,
+    page_size: int,
+    now: datetime | None = None,
+    landing_keep_days: int = 7,
+) -> wh.RunStats:
+    """Incremental API extract. Falls back to a full window backfill when there is
+    no state, or when the requested window reaches earlier than what was loaded."""
+    now = now or datetime.now(UTC)
+    window_start = wh.window_start_for(now, window_days)
+    watermark, covered_from = wh.read_state(con)
+
+    if watermark is None or covered_from is None or window_start < covered_from:
+        mode, after, covered_from = "backfill", None, window_start
+    else:
+        mode, after = "incremental", watermark
+    run_id = wh.new_run_id(now, "api")
+    log.info("run %s: %s from %s, window_start=%s", run_id, mode, _format_wm(after), window_start)
+
+    pages = fetch_pages(session, window_start, after, page_size=page_size)
+    stats, last_wm = _load_pages(
+        con,
+        pages,
+        run_id=run_id,
+        landing_dir=data_dir / "landing",
+        covered_from=covered_from,
+        loaded_at=now.replace(tzinfo=None),
+    )
+    if last_wm is None and mode == "backfill":
+        # Nothing matched, but the window is still "covered" from here on.
+        wh.write_state(con, None, covered_from)
+    stats.rows_pruned = wh.prune_window(con, window_start)
+    wh.prune_landing(data_dir / "landing", landing_keep_days, now)
+    _record_run(
+        con,
+        stats,
+        source="api",
+        mode=mode,
+        started_at=now,
+        source_as_of=now,
+        window_start=window_start,
+        wm_before=after,
+        wm_after=last_wm or after,
+    )
+    return stats
+
+
+def read_fixture(path: Path) -> tuple[datetime, list[dict]]:
+    """A fixture is {"fetched_at": iso, "rows": [...]} as written by scripts/make_fixture.py."""
+    opener = gzip.open if path.suffix == ".gz" else open
+    with opener(path, "rt", encoding="utf-8") as fh:
+        payload = json.load(fh)
+    fetched_at = datetime.fromisoformat(payload["fetched_at"].replace("Z", "+00:00"))
+    return fetched_at, payload["rows"]
+
+
+def load_fixture(
+    con: duckdb.DuckDBPyConnection, path: Path, *, data_dir: Path, page_size: int = 1000
+) -> wh.RunStats:
+    """Load a committed fixture through the same landing/upsert path as the API.
+
+    The fixture's fetch time is recorded as source_as_of, so freshness and
+    volume checks evaluate the data relative to when it was captured and give
+    the same answer in CI on any day.
+    """
+    fetched_at, rows = read_fixture(path)
+    rows = sorted(rows, key=lambda r: (r[":updated_at"], r["unique_key"]))
+
+    def pages():
+        for i in range(0, len(rows), page_size):
+            chunk = rows[i : i + page_size]
+            yield chunk, Watermark(chunk[-1][":updated_at"], chunk[-1]["unique_key"])
+
+    started = datetime.now(UTC)
+    run_id = wh.new_run_id(started, "fixture")
+    window_start = min(r["created_date"] for r in rows)[:10] + "T00:00:00"
+    stats, last_wm = _load_pages(
+        con,
+        pages(),
+        run_id=run_id,
+        landing_dir=data_dir / "landing",
+        covered_from=window_start,
+        loaded_at=started.replace(tzinfo=None),
+    )
+    _record_run(
+        con,
+        stats,
+        source="fixture",
+        mode="fixture",
+        started_at=started,
+        source_as_of=fetched_at,
+        window_start=window_start,
+        wm_before=None,
+        wm_after=last_wm,
+    )
+    return stats
