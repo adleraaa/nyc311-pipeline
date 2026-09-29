@@ -4,7 +4,7 @@ The sample keeps requests whose unique_key ends in "00". Keys are assigned
 sequentially, so this is close to a uniform systematic sample across days,
 boroughs and agencies, which keeps every mart populated in CI.
 
-Usage: python scripts/make_fixture.py [--out tests/fixtures/sample_311.json.gz]
+Usage: python -m scripts.make_fixture [--out tests/fixtures/sample_311.json.gz]
 """
 
 from __future__ import annotations
@@ -17,6 +17,8 @@ from pathlib import Path
 
 from nyc311.socrata import DATASET_URL, SOURCE_COLUMNS, make_session
 from nyc311.warehouse import window_start_for
+
+LIMIT = 10_000
 
 
 def main() -> None:
@@ -31,11 +33,14 @@ def main() -> None:
         "$where": f"created_date >= '{window_start_for(fetched_at, args.window_days)}' "
         "AND unique_key like '%00'",
         "$order": ":updated_at, unique_key",
-        "$limit": "10000",
+        "$limit": str(LIMIT),
     }
     response = make_session().get(DATASET_URL, params=params, timeout=600)
     response.raise_for_status()
     rows = response.json()
+    if len(rows) >= LIMIT:
+        # One request, no paging: hitting the limit means the sample was cut off.
+        raise SystemExit(f"got {len(rows)} rows = the $limit; use a shorter --window-days")
     payload = {
         "source": DATASET_URL,
         "sample": "unique_key like '%00'",

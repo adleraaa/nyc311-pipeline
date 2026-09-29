@@ -2,9 +2,10 @@
 
 This is the evidence behind keyset paging on (:updated_at, unique_key): if
 many rows share one timestamp, a watermark on the timestamp alone cannot mark
-a page boundary. Writes results/source_update_batches.json.
+a page boundary. Writes out/source_update_batches.json by default
+(results/ holds the committed snapshot).
 
-Usage: python scripts/profile_source.py [--days 10]
+Usage: python -m scripts.profile_source [--days 10]
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from nyc311.socrata import DATASET_URL, make_session
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--days", type=int, default=10)
-    parser.add_argument("--out", type=Path, default=Path("results/source_update_batches.json"))
+    parser.add_argument("--out", type=Path, default=Path("out/source_update_batches.json"))
     args = parser.parse_args()
 
     now = datetime.now(UTC)
