@@ -25,6 +25,7 @@ committed files in [`results/`](results/).
 | `dbt build` (5 models, 24 data tests) | 29 of 29 passed, 2.89 s | `results/dbt_build_log.txt` |
 | Custom quality checks | overall pass (details below) | `results/quality_report.md` |
 | Rows sharing a single `:updated_at` value in the source (last 10 days) | 538,015 of 662,561 updated rows in one batch | `results/source_update_batches.json` |
+| Same pipeline on GitHub Actions: cold start (no cached state) / next run (state restored from cache) | 300,328 rows in 341.9 s / 0 rows in 0.6 s | `results/github_actions_runs.md` |
 | pytest | 32 passed | `results/pytest_summary.txt` |
 
 The incremental run fetched nothing because the source had not published since the
