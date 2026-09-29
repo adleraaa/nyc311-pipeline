@@ -13,6 +13,7 @@ staging so a bad value never makes a load fail.
 from __future__ import annotations
 
 import shutil
+import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -67,6 +68,9 @@ CREATE TABLE IF NOT EXISTS raw.extract_runs (
     rows_updated INTEGER NOT NULL DEFAULT 0,
     rows_pruned INTEGER NOT NULL DEFAULT 0
 );
+-- Added after the first release. ADD COLUMN IF NOT EXISTS upgrades a warehouse
+-- restored from the Actions cache in place; existing rows get the default.
+ALTER TABLE raw.extract_runs ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'success';
 """
 
 
@@ -79,6 +83,7 @@ class RunStats:
     rows_inserted: int = 0
     rows_updated: int = 0
     rows_pruned: int = 0
+    mode: str = ""
     seen_keys: set[str] = field(default_factory=set, repr=False)
 
 
@@ -212,4 +217,7 @@ def prune_landing(landing_dir: Path, keep_days: int, now: datetime) -> list[Path
 
 
 def new_run_id(now: datetime, source: str) -> str:
-    return f"{now.astimezone(UTC).strftime('%Y%m%dT%H%M%SZ')}-{source}"
+    """Sortable, unique run id. The first 15 characters (YYYYMMDDTHHMMSS) are
+    what prune_landing compares; the random suffix keeps two runs started in
+    the same second from colliding on the extract_runs primary key."""
+    return f"{now.astimezone(UTC).strftime('%Y%m%dT%H%M%SZ')}-{source}-{uuid.uuid4().hex[:6]}"

@@ -30,18 +30,21 @@ def _format_wm(wm: Watermark | None) -> str | None:
 def _load_pages(
     con: duckdb.DuckDBPyConnection,
     pages: Iterable[tuple[list[dict], Watermark]],
+    stats: wh.RunStats,
     *,
-    run_id: str,
     landing_dir: Path,
-    covered_from: str,
+    covered_from: str | None,
     loaded_at: datetime,
-) -> tuple[wh.RunStats, Watermark | None]:
-    stats = wh.RunStats(run_id=run_id)
+) -> Watermark | None:
+    """Land and upsert each page; updates `stats` in place and returns the last watermark.
+
+    With covered_from=None the extractor state is left untouched (fixture loads).
+    """
     last_wm = None
     for rows, wm in pages:
         stats.pages += 1
         table = wh.rows_to_table(rows)
-        wh.land_page(table, landing_dir, run_id, stats.pages)
+        wh.land_page(table, landing_dir, stats.run_id, stats.pages)
 
         keys = table.column("unique_key").to_pylist()
         # Keys delivered more than once in this run (within a page or across
@@ -53,8 +56,11 @@ def _load_pages(
 
         con.begin()
         try:
-            inserted, updated = wh.upsert_page(con, wh.dedupe_latest(table), run_id, loaded_at)
-            wh.write_state(con, wm, covered_from)
+            inserted, updated = wh.upsert_page(
+                con, wh.dedupe_latest(table), stats.run_id, loaded_at
+            )
+            if covered_from is not None:
+                wh.write_state(con, wm, covered_from)
             con.commit()
         except Exception:
             con.rollback()
@@ -64,12 +70,12 @@ def _load_pages(
         stats.rows_updated += updated
         last_wm = wm
         log.info("page %d: %d rows (%d new, %d updated)", stats.pages, len(rows), inserted, updated)
-    return stats, last_wm
+    return last_wm
 
 
-def _record_run(
+def _start_run(
     con: duckdb.DuckDBPyConnection,
-    stats: wh.RunStats,
+    run_id: str,
     *,
     source: str,
     mode: str,
@@ -77,19 +83,43 @@ def _record_run(
     source_as_of: datetime,
     window_start: str,
     wm_before: Watermark | None,
-    wm_after: Watermark | None,
 ) -> None:
+    """Write the audit row before loading anything, so a crashed run still leaves a trace."""
     con.execute(
-        "INSERT INTO raw.extract_runs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        """
+        INSERT INTO raw.extract_runs (run_id, source, mode, started_at, source_as_of,
+                                      window_start, watermark_before, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'running')
+        """,
         [
-            stats.run_id,
+            run_id,
             source,
             mode,
             started_at.replace(tzinfo=None),
-            datetime.now(UTC).replace(tzinfo=None),
             source_as_of.replace(tzinfo=None),
             window_start,
             _format_wm(wm_before),
+        ],
+    )
+
+
+def _finish_run(
+    con: duckdb.DuckDBPyConnection,
+    stats: wh.RunStats,
+    *,
+    status: str,
+    wm_after: Watermark | None,
+) -> None:
+    con.execute(
+        """
+        UPDATE raw.extract_runs SET
+            status = ?, finished_at = ?, watermark_after = ?, pages = ?, rows_fetched = ?,
+            rows_duplicate_in_run = ?, rows_inserted = ?, rows_updated = ?, rows_pruned = ?
+        WHERE run_id = ?
+        """,
+        [
+            status,
+            datetime.now(UTC).replace(tzinfo=None),
             _format_wm(wm_after),
             stats.pages,
             stats.rows_fetched,
@@ -97,6 +127,7 @@ def _record_run(
             stats.rows_inserted,
             stats.rows_updated,
             stats.rows_pruned,
+            stats.run_id,
         ],
     )
 
@@ -112,43 +143,58 @@ def run_extract(
     landing_keep_days: int = 7,
 ) -> wh.RunStats:
     """Incremental API extract. Falls back to a full window backfill when there is
-    no state, or when the requested window reaches earlier than what was loaded."""
+    no state, or when the requested window starts earlier than the rows the
+    warehouse holds (covered_from)."""
     now = now or datetime.now(UTC)
     window_start = wh.window_start_for(now, window_days)
     watermark, covered_from = wh.read_state(con)
 
     if watermark is None or covered_from is None or window_start < covered_from:
-        mode, after, covered_from = "backfill", None, window_start
+        mode, after = "backfill", None
     else:
         mode, after = "incremental", watermark
-    run_id = wh.new_run_id(now, "api")
-    log.info("run %s: %s from %s, window_start=%s", run_id, mode, _format_wm(after), window_start)
-
-    pages = fetch_pages(session, window_start, after, page_size=page_size)
-    stats, last_wm = _load_pages(
-        con,
-        pages,
-        run_id=run_id,
-        landing_dir=data_dir / "landing",
-        covered_from=covered_from,
-        loaded_at=now.replace(tzinfo=None),
+    stats = wh.RunStats(run_id=wh.new_run_id(now, "api"), mode=mode)
+    log.info(
+        "run %s: %s from %s, window_start=%s", stats.run_id, mode, _format_wm(after), window_start
     )
-    if last_wm is None and mode == "backfill":
-        # Nothing matched, but the window is still "covered" from here on.
-        wh.write_state(con, None, covered_from)
-    stats.rows_pruned = wh.prune_window(con, window_start)
-    wh.prune_landing(data_dir / "landing", landing_keep_days, now)
-    _record_run(
+    _start_run(
         con,
-        stats,
+        stats.run_id,
         source="api",
         mode=mode,
         started_at=now,
         source_as_of=now,
         window_start=window_start,
         wm_before=after,
-        wm_after=last_wm or after,
     )
+    try:
+        # While pages load, state says "covered from window_start": a backfill
+        # starts there, and an incremental run already covers at least that much.
+        last_wm = _load_pages(
+            con,
+            fetch_pages(session, window_start, after, page_size=page_size),
+            stats,
+            landing_dir=data_dir / "landing",
+            covered_from=window_start,
+            loaded_at=now.replace(tzinfo=None),
+        )
+        con.begin()
+        try:
+            stats.rows_pruned = wh.prune_window(con, window_start)
+            # After the prune the warehouse holds exactly the rows created since
+            # window_start, so covered_from moves forward with it in the same
+            # transaction. Otherwise a later, wider window would look covered
+            # and the pruned rows would never be fetched again.
+            wh.write_state(con, last_wm or after, window_start)
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
+        wh.prune_landing(data_dir / "landing", landing_keep_days, now)
+    except BaseException:
+        _finish_run(con, stats, status="failed", wm_after=wh.read_state(con)[0])
+        raise
+    _finish_run(con, stats, status="success", wm_after=last_wm or after)
     return stats
 
 
@@ -169,7 +215,21 @@ def load_fixture(
     The fixture's fetch time is recorded as source_as_of, so freshness and
     volume checks evaluate the data relative to when it was captured and give
     the same answer in CI on any day.
+
+    A fixture is a sample, so it must never become the API extractor's resume
+    point: the watermark state is not written, and a later `extract` on the
+    same file starts with a full backfill. Loading a fixture into a warehouse
+    that already holds API data is refused, because the sample's older row
+    versions would overwrite newer ones.
     """
+    n_api_runs = con.execute(
+        "SELECT count(*) FROM raw.extract_runs WHERE source = 'api'"
+    ).fetchone()[0]
+    if n_api_runs:
+        raise ValueError(
+            f"this warehouse already holds {n_api_runs} API runs; "
+            "load the fixture into a separate --db"
+        )
     fetched_at, rows = read_fixture(path)
     rows = sorted(rows, key=lambda r: (r[":updated_at"], r["unique_key"]))
 
@@ -179,25 +239,25 @@ def load_fixture(
             yield chunk, Watermark(chunk[-1][":updated_at"], chunk[-1]["unique_key"])
 
     started = datetime.now(UTC)
-    run_id = wh.new_run_id(started, "fixture")
+    stats = wh.RunStats(run_id=wh.new_run_id(started, "fixture"), mode="fixture")
     window_start = min(r["created_date"] for r in rows)[:10] + "T00:00:00"
-    stats, last_wm = _load_pages(
+    _start_run(
         con,
-        pages(),
-        run_id=run_id,
-        landing_dir=data_dir / "landing",
-        covered_from=window_start,
-        loaded_at=started.replace(tzinfo=None),
-    )
-    _record_run(
-        con,
-        stats,
+        stats.run_id,
         source="fixture",
         mode="fixture",
         started_at=started,
         source_as_of=fetched_at,
         window_start=window_start,
         wm_before=None,
-        wm_after=last_wm,
     )
+    last_wm = _load_pages(
+        con,
+        pages(),
+        stats,
+        landing_dir=data_dir / "landing",
+        covered_from=None,
+        loaded_at=started.replace(tzinfo=None),
+    )
+    _finish_run(con, stats, status="success", wm_after=last_wm)
     return stats
