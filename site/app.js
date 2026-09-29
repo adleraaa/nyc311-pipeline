@@ -47,11 +47,13 @@ function embed(id, spec) {
 }
 
 function renderTiles(meta, resolution) {
-  const totalClosed = resolution.reduce((s, r) => s + r.n_closed, 0);
+  const cohort = resolution.reduce((s, r) => s + r.n_requests, 0);
+  const closed = resolution.reduce((s, r) => s + r.n_closed, 0);
+  const pctOpen = cohort ? `${(100 * (1 - closed / cohort)).toFixed(1)}%` : "n/a";
   const tiles = [
     ["Requests in window", fmt.format(meta.n_requests)],
     ["Open now", fmt.format(meta.n_open)],
-    ["Closed (agencies shown)", fmt.format(totalClosed)],
+    ["Still open after 14+ days", pctOpen],
     ["Window start", meta.window_start],
   ];
   document.getElementById("tiles").innerHTML = tiles
@@ -98,12 +100,15 @@ function renderTypes(rows) {
 }
 
 function renderResolution(rows) {
-  // One row per agency with two measures -> long format for a dot plot.
+  // One row per agency with two measures -> long format for a dot plot. A
+  // null quantile means too many requests are still open for it to be known,
+  // so that dot is left out; the label shows the share still open.
+  const label = (r) => `${r.agency} (${(100 * r.share_open).toFixed(0)}% open)`;
   const long = rows.flatMap((r) => [
-    { agency: r.agency, stat: "median", hours: r.median_hours, n: r.n_closed },
-    { agency: r.agency, stat: "p90", hours: r.p90_hours, n: r.n_closed },
-  ]);
-  const order = rows.map((r) => r.agency);
+    { agency: label(r), stat: "median", hours: r.median_hours, n: r.n_requests },
+    { agency: label(r), stat: "p90", hours: r.p90_hours, n: r.n_requests },
+  ]).filter((d) => d.hours !== null && d.hours > 0);
+  const order = rows.map(label);
   return embed("chart-resolution", {
     height: { step: 24 },
     data: { values: long },
@@ -126,7 +131,7 @@ function renderResolution(rows) {
                    scale: { domain: ["median", "p90"], range: THEME.series.slice(0, 2) } },
           tooltip: [
             { field: "agency" }, { field: "stat" },
-            { field: "hours", format: ",.1f" }, { field: "n", title: "closed requests", format: "," },
+            { field: "hours", format: ",.1f" }, { field: "n", title: "requests in cohort", format: "," },
           ],
         },
       },

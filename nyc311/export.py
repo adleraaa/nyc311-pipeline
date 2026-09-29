@@ -11,7 +11,7 @@ import duckdb
 
 SITE_SRC = Path(__file__).resolve().parent.parent / "site"
 TOP_COMPLAINT_TYPES = 10
-MIN_CLOSED_FOR_RESOLUTION = 30  # below this a p90 is mostly noise
+MIN_REQUESTS_FOR_RESOLUTION = 30  # below this a p90 is mostly noise
 
 
 def _rows(con: duckdb.DuckDBPyConnection, sql: str, params: dict | None = None) -> list[dict]:
@@ -50,27 +50,29 @@ def export_marts(con: duckdb.DuckDBPyConnection) -> dict[str, object]:
         """,
         {"k": TOP_COMPLAINT_TYPES},
     )
+    # NULL median/p90 = too many requests still open for the quantile to be
+    # known (see agg_resolution_time); those agencies sort last.
     resolution_by_agency = _rows(
         con,
         """
-        SELECT agency, n_closed, round(median_hours, 2) AS median_hours,
-               round(p90_hours, 2) AS p90_hours
+        SELECT agency, n_requests, n_closed, round(share_open, 4) AS share_open,
+               round(median_hours, 2) AS median_hours, round(p90_hours, 2) AS p90_hours
         FROM marts.agg_resolution_time
-        WHERE complaint_type = '(all)' AND n_closed >= $min_n
-        ORDER BY median_hours
+        WHERE complaint_type = '(all)' AND n_requests >= $min_n
+        ORDER BY median_hours NULLS LAST, agency
         """,
-        {"min_n": MIN_CLOSED_FOR_RESOLUTION},
+        {"min_n": MIN_REQUESTS_FOR_RESOLUTION},
     )
     resolution_top_types = _rows(
         con,
         """
-        SELECT agency, complaint_type, n_closed, round(median_hours, 2) AS median_hours,
-               round(p90_hours, 2) AS p90_hours
+        SELECT agency, complaint_type, n_requests, n_closed, round(share_open, 4) AS share_open,
+               round(median_hours, 2) AS median_hours, round(p90_hours, 2) AS p90_hours
         FROM marts.agg_resolution_time
-        WHERE complaint_type <> '(all)' AND n_closed >= $min_n
-        ORDER BY n_closed DESC LIMIT 15
+        WHERE complaint_type <> '(all)' AND n_requests >= $min_n
+        ORDER BY n_requests DESC LIMIT 15
         """,
-        {"min_n": MIN_CLOSED_FOR_RESOLUTION},
+        {"min_n": MIN_REQUESTS_FOR_RESOLUTION},
     )
     backlog_by_agency = _rows(
         con,

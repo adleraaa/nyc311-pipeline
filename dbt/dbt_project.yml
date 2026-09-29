@@ -18,3 +18,10 @@ models:
     marts:
       +schema: marts
       +materialized: table
+
+vars:
+  # agg_resolution_time only ranks requests at least this old (see the model).
+  resolution_min_age_days: 14
+
+flags:
+  send_anonymous_usage_stats: false

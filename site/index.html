@@ -38,8 +38,9 @@
 
     <section class="card">
       <h2>Resolution time by agency (hours)</h2>
-      <p class="sub">Closed requests created in the window, agencies with at least 30 closures.
-        Requests still open are not counted, so slow cases are under-represented.</p>
+      <p class="sub">All requests created at least 14 days before the latest request (agencies with
+        at least 30). Requests still open count as not resolved yet, so a median is shown only
+        when at least half are closed, and a p90 only when at least 90% are.</p>
       <div id="chart-resolution" class="chart"></div>
     </section>
 

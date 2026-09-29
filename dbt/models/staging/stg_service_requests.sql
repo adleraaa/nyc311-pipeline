@@ -1,6 +1,8 @@
 -- One row per 311 request: typed, trimmed, borough-normalized.
 -- Source timestamps: created/closed are New York local time without an offset;
--- the Socrata system fields (_sys_*) are UTC with a trailing "Z".
+-- the Socrata system fields (_sys_*) are UTC with a trailing "Z". Local times
+-- are kept for calendar-day grouping, and *_utc versions are added for every
+-- duration and for comparisons with the UTC system fields.
 
 with source as (
     select * from {{ source('raw', 'service_requests') }}
@@ -31,14 +33,23 @@ typed as (
         _last_run_id,
         _load_count
     from source
+),
+
+with_utc as (
+    select
+        *,
+        {{ ny_to_utc('created_at') }} as created_at_utc,
+        {{ ny_to_utc('closed_at_raw') }} as closed_at_raw_utc
+    from typed
 )
 
 select
-    * exclude (closed_at_raw),
+    * exclude (closed_at_raw, closed_at_raw_utc),
     -- A closed date before the created date is a known defect in this feed
     -- (placeholder dates, data entry errors). Treat it as unknown instead of
     -- producing a negative resolution time, and keep a flag for QA.
-    case when closed_at_raw >= created_at then closed_at_raw end as closed_at,
-    coalesce(closed_at_raw < created_at, false) as has_invalid_closed_date
-from typed
+    case when closed_at_raw_utc >= created_at_utc then closed_at_raw end as closed_at,
+    case when closed_at_raw_utc >= created_at_utc then closed_at_raw_utc end as closed_at_utc,
+    coalesce(closed_at_raw_utc < created_at_utc, false) as has_invalid_closed_date
+from with_utc
 where created_at is not null

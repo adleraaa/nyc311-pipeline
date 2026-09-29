@@ -12,13 +12,18 @@ models:
         data_tests: [not_null]
 
   - name: agg_resolution_time
-    description: Median and p90 resolution hours by agency x complaint type, with an agency rollup ('(all)').
+    description: >
+      Resolution hours by agency x complaint type, with an agency rollup ('(all)'), for
+      requests created at least resolution_min_age_days before the snapshot. Open requests
+      count as unresolved, so median/p90 are NULL when too few requests are closed.
     columns:
       - name: agency
         data_tests: [not_null]
-      - name: n_closed
+      - name: complaint_type
         data_tests: [not_null]
-      - name: median_hours
+      - name: n_requests
+        data_tests: [not_null]
+      - name: share_open
         data_tests: [not_null]
 
   - name: agg_open_backlog_aging

@@ -15,12 +15,12 @@ from tests.conftest import make_row
 DBT_DIR = Path(__file__).resolve().parent.parent / "dbt"
 
 
-def _closed(key: str, hours: int, **fields) -> dict:
-    # Created 2026-09-10 00:00, closed `hours` later (hours < 24 keeps it simple).
+def _closed(key: str, hours: int, created_day: str = "2026-09-01", **fields) -> dict:
+    # Created at midnight, closed `hours` later (hours < 24 keeps it simple).
     return make_row(
         key,
-        created="2026-09-10T00:00:00.000",
-        closed_date=f"2026-09-10T{hours:02d}:00:00.000",
+        created=f"{created_day}T00:00:00.000",
+        closed_date=f"{created_day}T{hours:02d}:00:00.000",
         status="Closed",
         agency="DOT",
         complaint_type="Street Light Condition",
@@ -28,13 +28,23 @@ def _closed(key: str, hours: int, **fields) -> dict:
     )
 
 
+# snapshot_at = latest created_at = o1, 2026-09-20 12:00 New York = 16:00 UTC.
+# The resolution cohort (created >= 14 days before) ends 2026-09-06 16:00 UTC.
 ROWS = [
-    # Resolution hours 1, 2, 3, 4, 10 -> median 3, p90 (linear) 4 + 0.6 * 6 = 7.6
+    # DOT cohort: resolution hours 1, 2, 3, 4, 10 plus one request still open.
     _closed("c1", 1),
     _closed("c2", 2),
     _closed("c3", 3),
     _closed("c4", 4),
     _closed("c5", 10),
+    make_row(
+        "c6",
+        created="2026-09-02T00:00:00.000",
+        agency="DOT",
+        complaint_type="Street Light Condition",
+    ),
+    # Too recent for the cohort; must not pull the median down.
+    _closed("c7", 1, created_day="2026-09-15"),
     # Closed before it was created: must not produce a negative resolution time.
     make_row(
         "bad",
@@ -44,12 +54,21 @@ ROWS = [
         agency="DOT",
         complaint_type="Street Light Condition",
     ),
+    # Spans the start of daylight saving time (02:00 -> 03:00 on 2026-03-08):
+    # 01:30 -> 03:30 on the wall clock is 1 real hour.
+    make_row(
+        "dst",
+        created="2026-03-08T01:30:00.000",
+        closed_date="2026-03-08T03:30:00.000",
+        status="Closed",
+        agency="DEP",
+    ),
     # Borough variants.
     make_row("b1", borough="Kings"),
     make_row("b2", borough=" queens "),
     make_row("b3", borough="Unspecified"),
     make_row("b4", borough=None),
-    # Open requests aged against snapshot_at = latest created_at = 2026-09-20 12:00.
+    # Open requests aged against snapshot_at.
     make_row("o1", created="2026-09-20T12:00:00.000", agency="NYPD"),  # 0 days
     make_row("o2", created="2026-09-18T00:00:00.000", agency="NYPD"),  # 2.5 days
     make_row("o3", created="2026-09-01T00:00:00.000", agency="NYPD"),  # 19.5 days
@@ -115,16 +134,35 @@ def test_invalid_closed_date_is_nulled_and_flagged(built_db):
     ) == [(None,)]
 
 
-def test_resolution_quantiles(built_db):
+def test_resolution_cohort_counts_open_requests_as_unresolved(built_db):
     rows = _query(
         built_db,
-        "SELECT complaint_type, n_closed, median_hours, p90_hours "
+        "SELECT complaint_type, n_requests, n_closed, median_hours, p90_hours "
         "FROM marts.agg_resolution_time WHERE agency = 'DOT' ORDER BY 1",
     )
-    assert [(t, n) for t, n, _, _ in rows] == [("(all)", 5), ("Street Light Condition", 5)]
-    for _, _, median, p90 in rows:
-        assert median == pytest.approx(3.0)
-        assert p90 == pytest.approx(7.6)
+    # Cohort = c1..c6 (c7 too recent, "bad" has no usable close date).
+    # Ranked: 1, 2, 3, 4, 10, open -> median = 3rd of 6 = 3 h; the p90 falls on
+    # the open request, so it is unknown rather than 10 h.
+    assert rows == [
+        ("(all)", 6, 5, 3.0, None),
+        ("Street Light Condition", 6, 5, 3.0, None),
+    ]
+
+
+def test_resolution_median_unknown_when_most_are_open(built_db):
+    assert _query(
+        built_db,
+        "SELECT n_requests, share_open, median_hours FROM marts.agg_resolution_time "
+        "WHERE agency = 'NYPD' AND complaint_type = '(all)'",
+    ) == [(1, 1.0, None)]
+
+
+def test_durations_use_utc_across_dst(built_db):
+    assert _query(
+        built_db,
+        "SELECT created_at_utc, closed_at_utc, resolution_hours "
+        "FROM intermediate.int_requests_enriched WHERE unique_key = 'dst'",
+    ) == [(datetime(2026, 3, 8, 6, 30), datetime(2026, 3, 8, 7, 30), 1.0)]
 
 
 def test_backlog_buckets(built_db):
@@ -141,6 +179,6 @@ def test_daily_volume_counts_every_request(built_db):
     assert _query(
         built_db,
         "SELECT n_requests FROM marts.fct_daily_volume "
-        "WHERE created_day = DATE '2026-09-10' AND borough = 'BROOKLYN' "
+        "WHERE created_day = DATE '2026-09-01' AND borough = 'BROOKLYN' "
         "AND complaint_type = 'Street Light Condition'",
     ) == [(5,)]
