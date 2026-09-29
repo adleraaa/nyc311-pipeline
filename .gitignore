@@ -16,3 +16,6 @@ dbt/dbt_packages/
 logs/
 
 .env
+data-ci/
+ci-results/
+quality/

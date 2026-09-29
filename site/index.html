@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NYC 311 Pipeline</title>
+  <meta name="description" content="Daily-refreshed NYC 311 service request metrics built with DuckDB and dbt.">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/vega@5.30.0/build/vega.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-lite@5.21.0/build/vega-lite.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vega-embed@6.26.0/build/vega-embed.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>NYC 311 service requests</h1>
+    <p class="asof" id="asof">Loading data...</p>
+    <p class="note">
+      Rolling window of requests from
+      <a href="https://data.cityofnewyork.us/Social-Services/311-Service-Requests-from-2010-to-Present/erm2-nwe9">NYC Open Data (erm2-nwe9)</a>,
+      loaded incrementally into DuckDB and modeled with dbt.
+      Source: <a href="https://github.com/adleraaa/nyc311-pipeline">github.com/adleraaa/nyc311-pipeline</a>.
+    </p>
+  </header>
+
+  <main>
+    <section class="tiles" id="tiles"></section>
+
+    <section class="card">
+      <h2>Requests created per day, by borough</h2>
+      <p class="sub">The most recent created day is partial (the source publishes once a day with a lag) and is omitted.</p>
+      <div id="chart-daily" class="chart"></div>
+    </section>
+
+    <section class="card">
+      <h2>Top complaint types in the window</h2>
+      <div id="chart-types" class="chart"></div>
+    </section>
+
+    <section class="card">
+      <h2>Resolution time by agency (hours)</h2>
+      <p class="sub">Closed requests created in the window, agencies with at least 30 closures.
+        Requests still open are not counted, so slow cases are under-represented.</p>
+      <div id="chart-resolution" class="chart"></div>
+    </section>
+
+    <section class="card">
+      <h2>Open backlog by age</h2>
+      <p class="sub">Open requests created in the window, aged at the latest created timestamp in the data.</p>
+      <div id="chart-backlog" class="chart"></div>
+    </section>
+
+    <section class="card">
+      <h2>Data quality</h2>
+      <p class="sub" id="quality-sub"></p>
+      <div class="table-wrap">
+        <table id="quality-table">
+          <thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

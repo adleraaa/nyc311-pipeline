@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+          node --check site/app.js
+
+      - name: Unit and transform tests (HTTP mocked)
+        run: pytest -q
+
+      # Same commands as the scheduled pipeline, but fed from the committed
+      # fixture instead of the live API, so CI needs no network or secrets.
+      - name: Pipeline on committed fixture
+        run: |
+          python -m nyc311 load-fixture tests/fixtures/sample_311.json.gz
+          dbt build --project-dir dbt --profiles-dir dbt
+          python -m nyc311 quality --out ci-results
+          python -m nyc311 build-site --out _site --quality ci-results/quality_report.json
+          test -s _site/data/meta.json
+          test -s _site/data/daily_by_borough.json
