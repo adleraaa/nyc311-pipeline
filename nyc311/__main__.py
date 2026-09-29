@@ -31,6 +31,7 @@ def cmd_extract(args: argparse.Namespace) -> int:
     summary = {
         "run_id": stats.run_id,
         "mode": stats.mode,
+        "status": stats.status,
         "pages": stats.pages,
         "rows_fetched": stats.rows_fetched,
         "rows_inserted": stats.rows_inserted,

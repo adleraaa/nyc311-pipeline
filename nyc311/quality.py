@@ -20,7 +20,7 @@ from statistics import mean
 import duckdb
 import requests
 
-from nyc311.socrata import DATASET_URL
+from nyc311.socrata import DATASET_URL, StaleReplicaError, get_fresh
 
 FRESHNESS_WARN_HOURS = 36  # the source publishes once a day
 FRESHNESS_FAIL_HOURS = 72
@@ -213,18 +213,15 @@ def check_source_count(
     if run["source"] != "api" or session is None:
         return CheckResult("source_count", "info", "not applicable (fixture run or offline)", {})
     try:
-        response = session.get(
+        response = get_fresh(
+            session,
             DATASET_URL,
-            params={
-                "$select": "count(*) AS n",
-                "$where": f"created_date >= '{run['window_start']}'",
-            },
+            {"$select": "count(*) AS n", "$where": f"created_date >= '{run['window_start']}'"},
             timeout=120,
         )
-        response.raise_for_status()
         source_rows = int(response.json()[0]["n"])
-    except requests.RequestException as exc:
-        # An unreachable API is not a data problem; report it without failing.
+    except (requests.RequestException, StaleReplicaError) as exc:
+        # An unreachable or lagging API is not a data problem; report it without failing.
         return CheckResult("source_count", "warn", f"could not query the source: {exc}", {})
     warehouse_rows = con.execute("SELECT count(*) FROM raw.service_requests").fetchone()[0]
     diff = warehouse_rows - source_rows
@@ -313,6 +310,7 @@ def run_checks(con: duckdb.DuckDBPyConnection, session: requests.Session | None 
         "run_id": run["run_id"],
         "source": run["source"],
         "mode": run["mode"],
+        "status": run.get("status"),
         "source_as_of_utc": run["source_as_of"].isoformat(),
         "overall": "fail" if any(c.status == "fail" for c in checks) else "pass",
         "checks": [asdict(c) for c in checks],
@@ -323,7 +321,8 @@ def to_markdown(report: dict) -> str:
     lines = [
         "# Data quality report",
         "",
-        f"Run `{report['run_id']}` ({report['source']}, {report.get('mode', 'n/a')}), "
+        f"Run `{report['run_id']}` ({report['source']}, {report.get('mode', 'n/a')}, "
+        f"{report.get('status', 'n/a')}), "
         f"source observed at {report['source_as_of_utc']} UTC. Overall: **{report['overall']}**.",
         "",
         "| Check | Status | Detail |",

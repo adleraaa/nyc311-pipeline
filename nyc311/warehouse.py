@@ -84,6 +84,7 @@ class RunStats:
     rows_updated: int = 0
     rows_pruned: int = 0
     mode: str = ""
+    status: str = ""
     seen_keys: set[str] = field(default_factory=set, repr=False)
 
 

@@ -18,7 +18,7 @@ import duckdb
 import requests
 
 from nyc311 import warehouse as wh
-from nyc311.socrata import Watermark, fetch_pages
+from nyc311.socrata import StaleReplicaError, Watermark, fetch_pages
 
 log = logging.getLogger(__name__)
 
@@ -167,17 +167,25 @@ def run_extract(
         window_start=window_start,
         wm_before=after,
     )
+    status = "success"
     try:
         # While pages load, state says "covered from window_start": a backfill
         # starts there, and an incremental run already covers at least that much.
-        last_wm = _load_pages(
-            con,
-            fetch_pages(session, window_start, after, page_size=page_size),
-            stats,
-            landing_dir=data_dir / "landing",
-            covered_from=window_start,
-            loaded_at=now.replace(tzinfo=None),
-        )
+        try:
+            _load_pages(
+                con,
+                fetch_pages(session, window_start, after, page_size=page_size),
+                stats,
+                landing_dir=data_dir / "landing",
+                covered_from=window_start,
+                loaded_at=now.replace(tzinfo=None),
+            )
+        except StaleReplicaError as exc:
+            # Not a failure: the pages loaded so far are committed, and the
+            # next run resumes from their watermark once replicas catch up.
+            log.warning("stopping early: %s", exc)
+            status = "stale_source"
+        last_wm = wh.read_state(con)[0] if stats.pages else None
         con.begin()
         try:
             stats.rows_pruned = wh.prune_window(con, window_start)
@@ -194,7 +202,8 @@ def run_extract(
     except BaseException:
         _finish_run(con, stats, status="failed", wm_after=wh.read_state(con)[0])
         raise
-    _finish_run(con, stats, status="success", wm_after=last_wm or after)
+    stats.status = status
+    _finish_run(con, stats, status=status, wm_after=last_wm or after)
     return stats
 
 

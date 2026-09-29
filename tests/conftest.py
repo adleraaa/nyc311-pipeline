@@ -32,3 +32,9 @@ def make_row(
 @pytest.fixture
 def sample_fixture_path() -> Path:
     return FIXTURES / "sample_311.json.gz"
+
+
+@pytest.fixture(autouse=True)
+def _no_stale_replica_wait(monkeypatch):
+    """Tests simulate stale replicas; do not actually wait between retries."""
+    monkeypatch.setattr("nyc311.socrata.STALE_WAIT_SECONDS", 0.0)

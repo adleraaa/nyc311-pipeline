@@ -5,11 +5,18 @@ Incremental extraction uses keyset pagination on the pair
 daily batches where tens of thousands of rows share one :updated_at value, so a
 watermark on :updated_at alone cannot tell where a page ended; the unique_key
 tiebreaker makes every position in the ordered stream unambiguous.
+
+Reads are served by replicas. While the daily update rolls out (observed on
+2026-09-29: batch stamped 01:33 UTC, first served around 04:05 UTC), most
+replicas still hold the previous version and say so in the
+X-SODA2-Data-Out-Of-Date response header. `get_fresh` refuses those answers.
 """
 
 from __future__ import annotations
 
+import logging
 import os
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 
@@ -18,6 +25,11 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 DATASET_URL = "https://data.cityofnewyork.us/resource/erm2-nwe9.json"
+STALE_HEADER = "X-SODA2-Data-Out-Of-Date"
+STALE_ATTEMPTS = 6
+STALE_WAIT_SECONDS = 10.0
+
+log = logging.getLogger(__name__)
 
 # Only the columns the models use; the full row has ~45 columns and most are
 # address details we never read. Fewer columns = smaller, politer requests.
@@ -81,6 +93,35 @@ def make_session(app_token: str | None = None) -> requests.Session:
     return session
 
 
+class StaleReplicaError(RuntimeError):
+    """Every attempt was answered by a replica that is behind the source of truth."""
+
+
+def get_fresh(
+    session: requests.Session, url: str, params: dict, timeout: float
+) -> requests.Response:
+    """GET that only accepts answers from an up-to-date replica.
+
+    A keyset query answered by a stale replica returns nothing past the
+    watermark, which is indistinguishable from "no new data" unless the header
+    is checked. Retrying after a short wait usually reaches a fresh replica.
+    """
+    for attempt in range(1, STALE_ATTEMPTS + 1):
+        response = session.get(url, params=params, timeout=timeout)
+        response.raise_for_status()
+        if response.headers.get(STALE_HEADER, "").lower() != "true":
+            return response
+        log.warning(
+            "stale replica (truth last modified %s), attempt %d of %d",
+            response.headers.get("X-SODA2-Truth-Last-Modified"),
+            attempt,
+            STALE_ATTEMPTS,
+        )
+        if attempt < STALE_ATTEMPTS:
+            time.sleep(STALE_WAIT_SECONDS)
+    raise StaleReplicaError(f"{STALE_ATTEMPTS} responses in a row came from a stale replica")
+
+
 def fetch_pages(
     session: requests.Session,
     window_start: str,
@@ -92,7 +133,8 @@ def fetch_pages(
     """Yield (rows, watermark_of_last_row) pages until the stream is exhausted.
 
     The caller persists the returned watermark after each page is loaded, so an
-    interrupted run resumes from the last committed page.
+    interrupted run resumes from the last committed page. Raises
+    StaleReplicaError if the API keeps answering from an outdated replica.
     """
     cursor = after
     while True:
@@ -102,9 +144,7 @@ def fetch_pages(
             "$order": ":updated_at, unique_key",
             "$limit": str(page_size),
         }
-        response = session.get(url, params=params, timeout=timeout)
-        response.raise_for_status()
-        rows = response.json()
+        rows = get_fresh(session, url, params, timeout).json()
         if not rows:
             return
         last = rows[-1]

@@ -2,10 +2,18 @@ from __future__ import annotations
 
 from urllib.parse import parse_qs, urlparse
 
+import pytest
 import requests
 import responses
 
-from nyc311.socrata import DATASET_URL, Watermark, build_where, fetch_pages
+from nyc311.socrata import (
+    DATASET_URL,
+    STALE_ATTEMPTS,
+    StaleReplicaError,
+    Watermark,
+    build_where,
+    fetch_pages,
+)
 from tests.conftest import make_row
 
 
@@ -69,3 +77,26 @@ def test_fetch_pages_raises_on_http_error():
         pass
     else:
         raise AssertionError("expected HTTPError")
+
+
+STALE = {"X-SODA2-Data-Out-Of-Date": "true"}
+
+
+@responses.activate
+def test_stale_replica_answer_is_retried_not_trusted():
+    # A stale replica answers "nothing after the watermark"; a fresh one has rows.
+    responses.get(DATASET_URL, json=[], headers=STALE)
+    responses.get(DATASET_URL, json=[make_row("1")], headers={"X-SODA2-Data-Out-Of-Date": "false"})
+
+    pages = list(fetch_pages(requests.Session(), "2026-09-01T00:00:00", None, page_size=2))
+
+    assert [len(rows) for rows, _ in pages] == [1]
+    assert len(responses.calls) == 2
+
+
+@responses.activate
+def test_persistently_stale_replica_raises():
+    responses.get(DATASET_URL, json=[], headers=STALE)
+    with pytest.raises(StaleReplicaError):
+        list(fetch_pages(requests.Session(), "2026-09-01T00:00:00", None))
+    assert len(responses.calls) == STALE_ATTEMPTS

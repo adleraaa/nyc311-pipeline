@@ -22,23 +22,28 @@ from pathlib import Path
 import duckdb
 import requests
 
-from nyc311.socrata import DATASET_URL, make_session
+from nyc311.socrata import DATASET_URL, get_fresh, make_session
 
 KEY_PAGE_SIZE = 50_000
 SAMPLE = 10
 
 
-def source_keys(session: requests.Session, window_start: str) -> set[str]:
-    """All unique_keys created since window_start, keyset-paged on unique_key."""
+def source_keys(session: requests.Session, window_start: str, versions: set[str]) -> set[str]:
+    """All unique_keys created since window_start, keyset-paged on unique_key.
+
+    Adds each response's X-SODA2-Truth-Last-Modified to `versions`, so the
+    result shows that every page came from the same dataset version.
+    """
     keys: set[str] = set()
     last = None
     while True:
         where = f"created_date >= '{window_start}'"
         if last is not None:
             where += f" AND unique_key > '{last}'"
-        response = session.get(
+        response = get_fresh(
+            session,
             DATASET_URL,
-            params={
+            {
                 "$select": "unique_key",
                 "$where": where,
                 "$order": "unique_key",
@@ -46,7 +51,7 @@ def source_keys(session: requests.Session, window_start: str) -> set[str]:
             },
             timeout=300,
         )
-        response.raise_for_status()
+        versions.add(response.headers.get("X-SODA2-Truth-Last-Modified", "unknown"))
         rows = response.json()
         keys.update(r["unique_key"] for r in rows)
         if len(rows) < KEY_PAGE_SIZE:
@@ -54,10 +59,13 @@ def source_keys(session: requests.Session, window_start: str) -> set[str]:
         last = rows[-1]["unique_key"]
 
 
-def source_daily_counts(session: requests.Session, window_start: str) -> dict[str, int]:
-    response = session.get(
+def source_daily_counts(
+    session: requests.Session, window_start: str, versions: set[str]
+) -> dict[str, int]:
+    response = get_fresh(
+        session,
         DATASET_URL,
-        params={
+        {
             "$select": "date_trunc_ymd(created_date) AS day, count(*) AS n",
             "$where": f"created_date >= '{window_start}'",
             "$group": "day",
@@ -66,7 +74,7 @@ def source_daily_counts(session: requests.Session, window_start: str) -> dict[st
         },
         timeout=300,
     )
-    response.raise_for_status()
+    versions.add(response.headers.get("X-SODA2-Truth-Last-Modified", "unknown"))
     return {r["day"][:10]: int(r["n"]) for r in response.json()}
 
 
@@ -91,8 +99,9 @@ def main() -> None:
     )
 
     session = make_session()
-    keys = source_keys(session, window_start)
-    daily = source_daily_counts(session, window_start)
+    versions: set[str] = set()
+    keys = source_keys(session, window_start, versions)
+    daily = source_daily_counts(session, window_start, versions)
 
     missing = sorted(keys - warehouse_keys)
     extra = sorted(warehouse_keys - keys)
@@ -105,6 +114,7 @@ def main() -> None:
         "checked_at_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "latest_run_id": run_id,
         "window_start": window_start,
+        "source_versions": sorted(versions),
         "source_keys": len(keys),
         "warehouse_rows": len(warehouse_keys),
         "missing_in_warehouse": len(missing),

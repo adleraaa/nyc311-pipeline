@@ -195,3 +195,19 @@ def test_two_runs_in_the_same_second_get_distinct_ids(tmp_path):
 
     assert first.run_id != second.run_id
     assert con.execute("SELECT count(*) FROM raw.extract_runs").fetchone() == (2,)
+
+
+@responses.activate
+def test_stale_source_stops_run_without_losing_committed_pages(tmp_path):
+    con = wh.connect(tmp_path / "w.duckdb")
+    responses.get(DATASET_URL, json=[make_row("1", TS1), make_row("2", TS1)])
+    responses.get(DATASET_URL, json=[], headers={"X-SODA2-Data-Out-Of-Date": "true"})
+
+    stats = _run(con, tmp_path)
+
+    assert stats.status == "stale_source"
+    assert wh.read_state(con)[0] == Watermark(TS1, "2")
+    assert con.execute("SELECT status, pages FROM raw.extract_runs").fetchone() == (
+        "stale_source",
+        1,
+    )
