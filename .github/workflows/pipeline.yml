@@ -6,6 +6,9 @@ on:
     - cron: "30 7 * * *"
   workflow_dispatch:
 
+env:
+  DO_NOT_TRACK: "1"
+
 permissions:
   contents: read
   pages: write
@@ -47,7 +50,11 @@ jobs:
       - name: Extract and load (incremental)
         run: python -m nyc311 -v extract --window-days 30 --stats-out quality/extract_run.json
 
+      # Also runs when the extract failed part-way: every committed page is
+      # stored with its watermark, so the saved file is consistent and the next
+      # run resumes after the last committed row instead of redoing the work.
       - name: Save warehouse state
+        if: ${{ !cancelled() }}
         uses: actions/cache/save@v4
         with:
           path: data
@@ -56,11 +63,17 @@ jobs:
       - name: dbt build (models + tests)
         run: dbt build --project-dir dbt --profiles-dir dbt
 
-      # A failed custom check still publishes the dashboard (which shows the
-      # report) and then fails the job at the end so it is visible.
+      # Exit 1 = a data check failed: still publish the dashboard (which shows
+      # the report) and fail the job at the end. Exit 2 = the check code
+      # crashed: that is a bug, so stop here.
       - name: Data-quality checks
         id: quality
-        run: python -m nyc311 quality --out quality || echo "failed=true" >> "$GITHUB_OUTPUT"
+        run: |
+          set +e
+          python -m nyc311 quality --out quality
+          rc=$?
+          set -e
+          if [ "$rc" -eq 1 ]; then echo "failed=true" >> "$GITHUB_OUTPUT"; elif [ "$rc" -ne 0 ]; then exit "$rc"; fi
 
       - name: Build dashboard
         run: python -m nyc311 build-site --out _site --quality quality/quality_report.json
