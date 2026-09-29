@@ -1,0 +1,49 @@
+{
+  "checked_at_utc": "2026-09-29T00:37:08Z",
+  "updated_since": "2026-09-19T00:00:00",
+  "distinct_updated_at_values": 35,
+  "rows_updated": 662561,
+  "largest_batches": [
+    {
+      "updated_at": "2026-09-28T01:33:33.096Z",
+      "rows": 538015
+    },
+    {
+      "updated_at": "2026-09-23T01:33:52.998Z",
+      "rows": 15144
+    },
+    {
+      "updated_at": "2026-09-21T01:33:54.244Z",
+      "rows": 15129
+    },
+    {
+      "updated_at": "2026-09-24T01:33:49.675Z",
+      "rows": 13899
+    },
+    {
+      "updated_at": "2026-09-22T01:33:47.694Z",
+      "rows": 13686
+    },
+    {
+      "updated_at": "2026-09-27T01:33:11.051Z",
+      "rows": 12897
+    },
+    {
+      "updated_at": "2026-09-25T01:33:51.563Z",
+      "rows": 11809
+    },
+    {
+      "updated_at": "2026-09-19T01:33:25.618Z",
+      "rows": 11786
+    },
+    {
+      "updated_at": "2026-09-26T01:33:38.855Z",
+      "rows": 11474
+    },
+    {
+      "updated_at": "2026-09-20T01:33:32.473Z",
+      "rows": 9646
+    }
+  ],
+  "share_of_rows_in_largest_10_batches": 0.9863
+}

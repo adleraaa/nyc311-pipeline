@@ -1,0 +1,68 @@
+{
+  "run_id": "20260929T003228Z-api",
+  "source": "api",
+  "source_as_of_utc": "2026-09-29T00:32:28.900201",
+  "overall": "pass",
+  "checks": [
+    {
+      "name": "freshness",
+      "status": "pass",
+      "detail": "latest source update 22.9 h before the run (warn > 36 h, fail > 72 h)",
+      "metrics": {
+        "as_of_utc": "2026-09-29T00:32:28.900201",
+        "max_source_updated_at_utc": "2026-09-28T01:38:24.258000",
+        "lag_hours": 22.9
+      }
+    },
+    {
+      "name": "volume_anomaly",
+      "status": "pass",
+      "detail": "2026-09-26: 8831 requests = 0.82x the trailing 28-day mean; 0 of 21 evaluated days outside +/-50%",
+      "metrics": {
+        "latest": {
+          "day": "2026-09-26",
+          "count": 8831,
+          "trailing_mean": 10776.8,
+          "ratio": 0.819,
+          "z": -2.58,
+          "flagged": false
+        },
+        "days_evaluated": 21,
+        "flagged_days": []
+      }
+    },
+    {
+      "name": "duplicate_rate",
+      "status": "pass",
+      "detail": "0 duplicate keys in the warehouse; 0.00% of rows fetched in the latest run were repeats",
+      "metrics": {
+        "warehouse_duplicate_keys": 0,
+        "run_rows_fetched": 0,
+        "run_duplicate_rows": 0,
+        "run_duplicate_rate": 0.0
+      }
+    },
+    {
+      "name": "late_arriving",
+      "status": "info",
+      "detail": "publication lag p50 35.2 h, p90 44.2 h; 1.0% published > 72 h after creation; latest run touched 0 requests created > 7 days earlier",
+      "metrics": {
+        "publication_lag_p50_hours": 35.24,
+        "publication_lag_p90_hours": 44.23,
+        "share_published_late": 0.01,
+        "rows": 300328,
+        "latest_run_updates_of_existing_rows": 0,
+        "latest_run_rows_created_over_7d_before": 0
+      }
+    },
+    {
+      "name": "closed_before_created",
+      "status": "info",
+      "detail": "206 of 300328 requests have closed_date < created_date (resolution time set to null)",
+      "metrics": {
+        "invalid": 206,
+        "rows": 300328
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "checked_at_utc": "2026-09-29T00:32:28Z",
+  "latest_run_id": "20260929T002912Z-api",
+  "window_start": "2026-08-30T00:00:00",
+  "source_count": 300328,
+  "warehouse_rows": 300328,
+  "warehouse_distinct_keys": 300328,
+  "difference": 0
+}
