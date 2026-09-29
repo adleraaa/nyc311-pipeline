@@ -30,6 +30,7 @@ def cmd_extract(args: argparse.Namespace) -> int:
     elapsed = time.perf_counter() - started
     summary = {
         "run_id": stats.run_id,
+        "mode": stats.mode,
         "pages": stats.pages,
         "rows_fetched": stats.rows_fetched,
         "rows_inserted": stats.rows_inserted,
@@ -47,7 +48,11 @@ def cmd_extract(args: argparse.Namespace) -> int:
 
 def cmd_load_fixture(args: argparse.Namespace) -> int:
     con = wh.connect(args.db)
-    stats = extract_mod.load_fixture(con, args.path, data_dir=args.db.parent)
+    try:
+        stats = extract_mod.load_fixture(con, args.path, data_dir=args.db.parent)
+    except ValueError as exc:
+        print(f"load-fixture: {exc}", file=sys.stderr)
+        return 1
     print(
         json.dumps(
             {
@@ -62,8 +67,14 @@ def cmd_load_fixture(args: argparse.Namespace) -> int:
 
 
 def cmd_quality(args: argparse.Namespace) -> int:
+    """Exit 0 = all checks ran and none failed, 1 = a data check failed,
+    2 = the check code itself crashed (a bug, not a data problem)."""
     con = wh.connect(args.db)
-    report = quality.run_checks(con)
+    try:
+        report = quality.run_checks(con, session=None if args.offline else make_session())
+    except Exception:
+        logging.getLogger("nyc311.quality").exception("quality checks crashed")
+        return 2
     quality.write_report(report, args.out)
     print(quality.to_markdown(report))
     return 1 if report["overall"] == "fail" else 0
@@ -86,20 +97,20 @@ def cmd_summary(args: argparse.Namespace) -> int:
     cols = [d[0] for d in cur.description]
     runs = [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
     datasets = export.export_marts(con)
-    citywide = con.execute(
-        "SELECT count(*), quantile_cont(resolution_hours, 0.5),"
-        " quantile_cont(resolution_hours, 0.9)"
-        " FROM intermediate.int_requests_enriched WHERE resolution_hours IS NOT NULL"
+    cohort = con.execute(
+        "SELECT sum(n_requests), sum(n_closed) FROM marts.agg_resolution_time "
+        "WHERE complaint_type = '(all)'"
     ).fetchone()
     summary = {
         "runs": runs,
         "meta": datasets["meta"],
-        "closed_with_resolution_time": citywide[0],
-        "citywide_median_resolution_hours": round(citywide[1], 2),
-        "citywide_p90_resolution_hours": round(citywide[2], 2),
+        "resolution_cohort": {
+            "n_requests": cohort[0],
+            "n_closed": cohort[1],
+            "share_open": round(1 - cohort[1] / cohort[0], 4) if cohort[0] else None,
+        },
+        "resolution_by_agency": datasets["resolution_by_agency"],
         "top_complaint_types": datasets["top_complaint_types"][:5],
-        "fastest_agencies": datasets["resolution_by_agency"][:3],
-        "slowest_agencies": datasets["resolution_by_agency"][-3:],
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(summary, indent=2, default=str), encoding="utf-8")
@@ -124,16 +135,17 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_load_fixture)
 
     p = sub.add_parser("quality", help="run custom data-quality checks (after dbt build)")
-    p.add_argument("--out", type=Path, default=Path("results"))
+    p.add_argument("--out", type=Path, default=Path("out"))
+    p.add_argument("--offline", action="store_true", help="skip the API source-count check")
     p.set_defaults(func=cmd_quality)
 
     p = sub.add_parser("build-site", help="export marts to JSON and assemble the dashboard")
     p.add_argument("--out", type=Path, default=Path("_site"))
-    p.add_argument("--quality", type=Path, default=Path("results/quality_report.json"))
+    p.add_argument("--quality", type=Path, default=Path("out/quality_report.json"))
     p.set_defaults(func=cmd_build_site)
 
     p = sub.add_parser("summary", help="write headline numbers for the README")
-    p.add_argument("--out", type=Path, default=Path("results/pipeline_summary.json"))
+    p.add_argument("--out", type=Path, default=Path("out/pipeline_summary.json"))
     p.set_defaults(func=cmd_summary)
 
     args = parser.parse_args(argv)
